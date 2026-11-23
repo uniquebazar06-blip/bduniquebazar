@@ -1027,6 +1027,7 @@
         let sliderTimer = null;
         let touchStartX = 0;
         let chatPollTimer = null;
+        let lastChatHash = '';
 
         // ============================================================
         // Utilities
@@ -1067,15 +1068,18 @@
         function closeDetailsModal() {
             closeModal('detailsModal');
             document.getElementById('dVideoBox').innerHTML = ''; // Stop playing video immediately
-            if (window.location.search.includes('product=')) {
-                window.history.replaceState({}, '', window.location.pathname);
-            }
+            const url = new URL(window.location.href);
+if (url.searchParams.has('product')) {
+    url.searchParams.delete('product');
+    window.history.replaceState({}, '', url.pathname + url.search);
+}
         }
 
         function closeChatModal() {
-            closeModal('chatModal');
-            if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
-        }
+    closeModal('chatModal');
+    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+    lastChatHash = '';
+}
 
         document.querySelectorAll('.modal-overlay').forEach(ov => {
             ov.addEventListener('click', (e) => {
@@ -1105,7 +1109,7 @@
         function getProductImages(p) {
             if (Array.isArray(p.images) && p.images.length > 0) return p.images.filter(Boolean);
             if (p.image) return [p.image];
-            return ['https://via.placeholder.com/400?text=No+Image'];
+           return ['https://placehold.co/400x400/e2e8f0/64748b?text=No+Image'];
         }
 
         // ============================================================
@@ -1534,7 +1538,7 @@
 
                     card.innerHTML = `
                         <div class="product-img-wrap">
-                            <img src="${escapeHtml(imgs[0])}" class="product-img" loading="lazy" alt="${escapeHtml(p.name)}" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
+                            <img src="${escapeHtml(imgs[0])}" class="product-img" loading="lazy" alt="${escapeHtml(p.name)}" onerror="this.onerror=null;this.src='https://placehold.co/300x300/e2e8f0/64748b?text=No+Image'">
                             ${hasDiscount ? `<span class="discount-badge">-${discPct}%</span>` : ''}
                             <div class="media-badges">
                                 ${imgs.length > 1 ? `<span class="media-pill"><i class="fas fa-images"></i> ${imgs.length}</span>` : ''}
@@ -1765,7 +1769,7 @@
                 <div class="review-card">
                     <div class="review-head">
                         <strong>${escapeHtml(r.userName || r.userMobile)}</strong>
-                        <span class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+                        <span class="review-stars">${'★'.repeat(Math.max(1, Math.min(5, Number(r.rating) || 5)))}${'☆'.repeat(5 - Math.max(1, Math.min(5, Number(r.rating) || 5)))}</span>
                     </div>
                     <div class="review-text">${escapeHtml(r.comment)}</div>
                     <div style="font-size:11px; color:#94a3b8; margin-top:3px;">${formatDate(r.createdAt)}</div>
@@ -1861,32 +1865,43 @@
         }
 
         async function handleAuth() {
-            const mobile = document.getElementById('authMobile').value.trim();
-            const password = document.getElementById('authPassword').value.trim();
-            if (!/^01[3-9]\d{8}$/.test(mobile)) return showToast("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন", "error");
-            if (password.length < 4) return showToast("কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন", "error");
+    const mobile = document.getElementById('authMobile').value.trim();
+    const password = document.getElementById('authPassword').value.trim();
+    if (!/^01[3-9]\d{8}$/.test(mobile)) return showToast("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন", "error");
+    if (password.length < 4) return showToast("কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন", "error");
 
-            try {
-                const existing = await restGet(`users/${mobile}`);
-                if (isLoginMode) {
-                    if (!existing) return showToast("এই নম্বরে কোনো অ্যাকাউন্ট নেই! নিবন্ধন করুন।", "error");
-                    if (existing.password !== password) return showToast("পাসওয়ার্ড ভুল হয়েছে!", "error");
-                    completeLogin(mobile, existing);
-                } else {
-                    if (existing) return showToast("এই নম্বরে আগে থেকেই অ্যাকাউন্ট আছে! লগইন করুন।", "error");
-                    const name = document.getElementById('regName').value.trim();
-                    const village = document.getElementById('regVillage').value.trim();
-                    const thana = document.getElementById('regThana').value.trim();
-                    const district = document.getElementById('regDistrict').value.trim();
-                    if (!name || !village || !thana || !district) return showToast("নাম, গ্রাম, থানা ও জেলা পূরণ করুন", "error");
+    const btn = document.getElementById('authSubmitBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const oldLabel = btn.innerText;
+    btn.innerText = 'অপেক্ষা করুন...';
 
-                    const newUser = { mobile, password, name, village, thana, district, createdAt: Date.now(), favorites: {} };
-                    await restSet(`users/${mobile}`, newUser);
-                    completeLogin(mobile, newUser);
-                    showToast("নিবন্ধন সফল হয়েছে!", "success");
-                }
-            } catch (e) { showToast("ডাটাবেইজ কানেকশন এরর!", "error"); }
+    try {
+        const existing = await restGet(`users/${mobile}`);
+        if (isLoginMode) {
+            if (!existing) return showToast("এই নম্বরে কোনো অ্যাকাউন্ট নেই! নিবন্ধন করুন।", "error");
+            if (existing.password !== password) return showToast("পাসওয়ার্ড ভুল হয়েছে!", "error");
+            completeLogin(mobile, existing);
+        } else {
+            if (existing) return showToast("এই নম্বরে আগে থেকেই অ্যাকাউন্ট আছে! লগইন করুন।", "error");
+            const name = document.getElementById('regName').value.trim();
+            const village = document.getElementById('regVillage').value.trim();
+            const thana = document.getElementById('regThana').value.trim();
+            const district = document.getElementById('regDistrict').value.trim();
+            if (!name || !village || !thana || !district) return showToast("নাম, গ্রাম, থানা ও জেলা পূরণ করুন", "error");
+
+            const newUser = { mobile, password, name, village, thana, district, createdAt: Date.now(), favorites: {} };
+            await restSet(`users/${mobile}`, newUser);
+            completeLogin(mobile, newUser);
+            showToast("নিবন্ধন সফল হয়েছে!", "success");
         }
+    } catch (e) {
+        showToast("ডাটাবেইজ কানেকশন এরর!", "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = oldLabel;
+    }
+}
 
         function completeLogin(mobile, profile) {
             currentUserMobile = mobile;
@@ -1952,15 +1967,31 @@
             b.innerText = qty; b.style.display = qty > 0 ? 'flex' : 'none';
         }
         function addItemToCart(prodId) {
-            const p = productsData[prodId];
-            if (!p) return;
-            const ex = cart.find(i => i.id === prodId);
-            if (ex) ex.qty += 1;
-            else cart.push({ id: prodId, code: p.code || '', name: p.name, price: Number(p.price), image: getProductImages(p)[0], qty: 1 });
-            saveCartLocal();
-        }
-        function addCurrentToCart() { addItemToCart(currentProductId); showToast("পণ্যটি কার্টে যুক্ত হয়েছে!", "success"); }
-        function orderNowCurrentProduct() { addItemToCart(currentProductId); closeDetailsModal(); openCartModal(); }
+    const p = productsData[prodId];
+    if (!p) return false;
+    const maxStock = p.stock !== undefined ? Number(p.stock) : Infinity;
+    const ex = cart.find(i => i.id === prodId);
+    const nextQty = (ex ? ex.qty : 0) + 1;
+
+    if (maxStock <= 0 || nextQty > maxStock) {
+        showToast(`সর্বোচ্চ ${Math.max(0, maxStock)}টি পণ্য স্টকে আছে!`, "error");
+        return false;
+    }
+    if (ex) {
+        ex.qty = nextQty;
+        ex.price = Number(p.price);
+    } else {
+        cart.push({ id: prodId, code: p.code || '', name: p.name, price: Number(p.price), image: getProductImages(p)[0], qty: 1 });
+    }
+    saveCartLocal();
+    return true;
+}
+function addCurrentToCart() {
+    if (addItemToCart(currentProductId)) showToast("পণ্যটি কার্টে যুক্ত হয়েছে!", "success");
+}
+function orderNowCurrentProduct() {
+    if (addItemToCart(currentProductId)) { closeDetailsModal(); openCartModal(); }
+}
 
         function openCartModal() {
             setActiveBottomNav('navCart');
@@ -1999,17 +2030,25 @@
                 </div>
             `).join('');
             const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-            const delivery = Number(shopSettings.deliveryCharge || 60);
+            const delivery = (shopSettings.deliveryCharge !== undefined && shopSettings.deliveryCharge !== '') ? Number(shopSettings.deliveryCharge) : 60;
             document.getElementById('sumSubtotal').innerText = `৳ ${subtotal}`;
             document.getElementById('sumDelivery').innerText = `৳ ${delivery}`;
             document.getElementById('sumTotal').innerText = `৳ ${subtotal + delivery}`;
         }
 
         function changeCartQty(idx, delta) {
-            cart[idx].qty += delta;
-            if (cart[idx].qty <= 0) cart.splice(idx, 1);
-            saveCartLocal(); renderCartUI();
-        }
+    const item = cart[idx];
+    if (!item) return;
+    const p = productsData[item.id];
+    const maxStock = (p && p.stock !== undefined) ? Number(p.stock) : Infinity;
+
+    if (delta > 0 && item.qty + delta > maxStock) {
+        return showToast(`সর্বোচ্চ ${maxStock}টি পণ্য স্টকে আছে!`, "error");
+    }
+    item.qty += delta;
+    if (item.qty <= 0) cart.splice(idx, 1);
+    saveCartLocal(); renderCartUI();
+}
 
         function selectPayment(method) {
             selectedPaymentMethod = method;
@@ -2049,9 +2088,9 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> অর্ডার হচ্ছে...';
 
             const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-            const delivery = Number(shopSettings.deliveryCharge || 60);
+            const delivery = (shopSettings.deliveryCharge !== undefined && shopSettings.deliveryCharge !== '') ? Number(shopSettings.deliveryCharge) : 60;
             const total = subtotal + delivery;
-            const orderId = 'BUB-' + Date.now().toString().slice(-6);
+            const orderId = 'BUB-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
             const fullAddress = `গ্রাম: ${village}, থানা: ${thana}, জেলা: ${district}`;
 
             const orderObj = {
@@ -2197,7 +2236,10 @@
                 const msgsObj = await restGet(`chats/${currentUserMobile}/messages`);
                 const box = document.getElementById('chatMessages');
                 const arr = Object.values(msgsObj || {}).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-                const prevScroll = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+const newHash = arr.length + '_' + (arr[arr.length - 1]?.timestamp || 0);
+if (!scrollBottom && newHash === lastChatHash) return;
+lastChatHash = newHash;
+const prevScroll = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
 
                 if (arr.length === 0) {
                     box.innerHTML = `<div class="msg-bubble msg-admin">আসসালামু আলাইকুম! BD UNIQUE BAZAR সাপোর্টে স্বাগতম। যেকোনো পণ্যের কোড লিখে বা ছবি পাঠিয়ে সাহায্য নিতে পারেন।</div>`;
