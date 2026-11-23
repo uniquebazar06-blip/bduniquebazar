@@ -907,7 +907,9 @@
         // High-Scale Firebase REST Helper (Uses 0 WebSocket Connections!)
         // ============================================================
         async function restGet(path) {
-            const res = await fetch(`${DB_URL}/${path}.json?_t=${Date.now()}`, { cache: 'no-store' });
+            const [cleanPath, queryStr] = path.split('?');
+            const url = `${DB_URL}/${cleanPath}.json${queryStr ? '?' + queryStr : ''}`;
+            const res = await fetch(url, { cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             return await res.json();
         }
