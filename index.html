@@ -787,7 +787,7 @@
                 <button class="btn btn-danger" style="width:100%;" onclick="confirmLogout()">
                     <i class="fas fa-sign-out-alt"></i> লগআউট করুন
                 </button>
-                <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:10px;" id="appVersionFooter">Version 2.0.1</div>
+                <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:10px;" id="appVersionFooter">Version 2.0.2</div>
             </div>
         </div>
     </div>
@@ -935,7 +935,7 @@
         // নোট: Singapore সার্ভার হলে DB_URL বদলে দিন:
         // "https://bd-unique-bazar-default-rtdb.asia-southeast1.firebasedatabase.app"
         // ============================================================
-        const APP_CODE_VERSION = "2.0.1";
+        const APP_CODE_VERSION = "2.0.2";
         const DB_URL = "https://bd-unique-bazar-default-rtdb.firebaseio.com";
         const IMGBB_API_KEY = "eddb89bbce58d882cf0a41da7af0d62d";
 
@@ -945,7 +945,8 @@
             CATALOG: 'bub_catalog_cache_v2',
             USER: 'bdUniqueUserMobile',
             CART: 'bdUniqueCart',
-            SEEN_NOTIFS: 'bdUniqueSeenNotifs'
+            SEEN_NOTIFS: 'bdUniqueSeenNotifs',
+            HIDDEN_NOTIFS: 'bdUniqueHiddenNotifs'
         };
 
         // ============================================================
@@ -1055,6 +1056,8 @@
         let userFavorites = {};
         let cart = JSON.parse(localStorage.getItem(CACHE_KEYS.CART) || '[]');
         let seenGlobalNotifIds = JSON.parse(localStorage.getItem(CACHE_KEYS.SEEN_NOTIFS) || '[]');
+        let hiddenGlobalNotifIds = JSON.parse(localStorage.getItem(CACHE_KEYS.HIDDEN_NOTIFS) || '[]');
+        let currentNotifList = [];
 
         let isLoginMode = true;
         let currentProductId = null;
@@ -1371,9 +1374,24 @@
                     userFavorites = profile.favorites || {};
                 }
                 userNotifs = uNotifs || {};
-                userOrders = Object.entries(uOrders || {})
-                    .map(([key, o]) => ({ key, ...o }))
-                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+                const rawOrders = Object.entries(uOrders || {}).map(([key, o]) => ({ key, ...o }));
+
+                // মূল orders নোড থেকে প্রতিটি অর্ডারের সর্বশেষ স্ট্যাটাস (Confirmed/Shipped/Delivered/Cancelled) সিঙ্ক
+                userOrders = await Promise.all(rawOrders.map(async (o) => {
+                    try {
+                        let liveStatus = await restGet(`orders/${o.key}/status`);
+                        if (!liveStatus && o.orderId && o.orderId !== o.key) {
+                            liveStatus = await restGet(`orders/${o.orderId}/status`);
+                        }
+                        if (liveStatus && typeof liveStatus === 'string') {
+                            return { ...o, status: liveStatus };
+                        }
+                    } catch (err) {}
+                    return o;
+                }));
+
+                userOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
                 updateFavBadge();
                 updateNotificationBadge();
@@ -2250,7 +2268,7 @@
         }
 
         // ============================================================
-        // Orders & One-Click Receipt Download
+        // Orders, Live Status, Delete History & Receipt Download
         // ============================================================
         async function openOrdersModal() {
             if (!currentUserMobile) { showToast("অর্ডার দেখতে লগইন করুন", "info"); openAuthModal(); return; }
@@ -2261,31 +2279,88 @@
             renderOrdersList();
         }
 
+        function getStatusClass(status) {
+            const s = String(status || 'Pending').trim().toLowerCase();
+            if (s === 'confirmed') return 'Confirmed';
+            if (s === 'shipped') return 'Shipped';
+            if (s === 'delivered') return 'Delivered';
+            if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
+            return 'Pending';
+        }
+
         function renderOrdersList() {
             const container = document.getElementById('ordersListContainer');
             if (userOrders.length === 0) {
                 container.innerHTML = `<div class="empty-state"><i class="fas fa-box-open"></i>এখনো কোনো অর্ডার করা হয়নি।</div>`;
                 return;
             }
-            container.innerHTML = userOrders.map((o, idx) => `
-                <div class="order-card">
-                    <div class="order-top">
-                        <strong>#${escapeHtml(o.orderId)}</strong>
-                        <span class="status-pill status-${escapeHtml(o.status || 'Pending')}">${escapeHtml(o.status || 'Pending')}</span>
-                    </div>
-                    <div style="font-size:13px; color:#475569; margin-bottom:6px;">
-                        ${(o.items || []).map(i => `${escapeHtml(i.name)} ${i.code ? `(${escapeHtml(i.code)})` : ''} ×${i.qty}`).join(', ')}
-                    </div>
-                    <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
-                        <i class="fas fa-location-dot"></i> ${escapeHtml(o.address)}<br>
-                        <i class="fas fa-clock"></i> ${formatDate(o.createdAt)} | পেমেন্ট: ${escapeHtml(o.paymentMethod)}
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:8px;">
-                        <strong style="color:var(--primary); font-size:16px;">মোট: ৳ ${o.total}</strong>
-                        <button class="btn btn-outline btn-sm" onclick="downloadOrderReceiptByIndex(${idx})"><i class="fas fa-file-invoice"></i> রিসিট ডাউনলোড</button>
-                    </div>
+
+            const topBar = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+                    <span style="font-size:13px; font-weight:600; color:var(--muted);">মোট অর্ডার: ${userOrders.length}টি</span>
+                    <button class="btn btn-danger btn-sm" onclick="clearAllUserOrders()">
+                        <i class="fas fa-trash"></i> সব মুছুন
+                    </button>
                 </div>
-            `).join('');
+            `;
+
+            const cardsHtml = userOrders.map((o, idx) => {
+                const stText = o.status || 'Pending';
+                const stCls = getStatusClass(stText);
+                return `
+                    <div class="order-card">
+                        <div class="order-top">
+                            <strong>#${escapeHtml(o.orderId)}</strong>
+                            <span class="status-pill status-${stCls}">${escapeHtml(stText)}</span>
+                        </div>
+                        <div style="font-size:13px; color:#475569; margin-bottom:6px;">
+                            ${(o.items || []).map(i => `${escapeHtml(i.name)} ${i.code ? `(${escapeHtml(i.code)})` : ''} ×${i.qty}`).join(', ')}
+                        </div>
+                        <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+                            <i class="fas fa-location-dot"></i> ${escapeHtml(o.address)}<br>
+                            <i class="fas fa-clock"></i> ${formatDate(o.createdAt)} | পেমেন্ট: ${escapeHtml(o.paymentMethod)}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:8px; gap:6px; flex-wrap:wrap;">
+                            <strong style="color:var(--primary); font-size:16px;">মোট: ৳ ${o.total}</strong>
+                            <div style="display:flex; gap:6px;">
+                                <button class="btn btn-outline btn-sm" onclick="downloadOrderReceiptByIndex(${idx})"><i class="fas fa-file-invoice"></i> রিসিট</button>
+                                <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:#fecaca;" onclick="deleteUserOrderByIndex(${idx})" title="তালিকা থেকে মুছুন"><i class="fas fa-trash-alt"></i> মুছুন</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = topBar + cardsHtml;
+        }
+
+        function deleteUserOrderByIndex(idx) {
+            const o = userOrders[idx];
+            if (!o || !currentUserMobile) return;
+            showConfirm("অর্ডার মুছুন", `#${o.orderId} অর্ডারটি আপনার তালিকা থেকে মুছে ফেলতে চান?`, async () => {
+                try {
+                    await restDelete(`userOrders/${currentUserMobile}/${o.key}`);
+                    userOrders.splice(idx, 1);
+                    renderOrdersList();
+                    showToast("অর্ডার তালিকা থেকে মুছে ফেলা হয়েছে!", "success");
+                } catch (e) {
+                    showToast("অর্ডার মুছতে সমস্যা হয়েছে!", "error");
+                }
+            });
+        }
+
+        function clearAllUserOrders() {
+            if (!currentUserMobile || userOrders.length === 0) return;
+            showConfirm("সব অর্ডার মুছুন", "আপনার তালিকার সব অর্ডার হিস্ট্রি মুছে ফেলতে চান?", async () => {
+                try {
+                    await restDelete(`userOrders/${currentUserMobile}`);
+                    userOrders = [];
+                    renderOrdersList();
+                    showToast("সব অর্ডার তালিকা থেকে মুছে ফেলা হয়েছে!", "success");
+                } catch (e) {
+                    showToast("সব অর্ডার মুছতে সমস্যা হয়েছে!", "error");
+                }
+            });
         }
 
         function downloadOrderReceiptByIndex(idx) {
@@ -2420,11 +2495,12 @@
         document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
 
         // ============================================================
-        // Notifications
+        // Notifications (With Single & Bulk Delete)
         // ============================================================
         function getAllNotificationsList() {
             const combined = [];
             for (const [id, n] of Object.entries(globalNotifs || {})) {
+                if (hiddenGlobalNotifIds.includes(id)) continue;
                 combined.push({ id, scope: 'global', ...n, isRead: seenGlobalNotifIds.includes(id) });
             }
             for (const [id, n] of Object.entries(userNotifs || {})) {
@@ -2440,27 +2516,89 @@
             badge.style.display = unread > 0 ? 'flex' : 'none';
         }
 
-        async function openNotificationsModal() {
-            if (currentUserMobile) await syncUserData();
-            const list = getAllNotificationsList();
+        function renderNotificationsList() {
+            currentNotifList = getAllNotificationsList();
             const container = document.getElementById('notifListContainer');
-            if (list.length === 0) {
+            if (currentNotifList.length === 0) {
                 container.innerHTML = `<div class="empty-state"><i class="fas fa-bell-slash"></i>কোনো নোটিফিকেশন নেই।</div>`;
-            } else {
-                container.innerHTML = list.map(n => `
-                    <div class="notif-item ${n.isRead ? '' : 'unread'}">
+                return;
+            }
+
+            const topBar = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+                    <span style="font-size:13px; font-weight:600; color:var(--muted);">মোট: ${currentNotifList.length}টি নোটিফিকেশন</span>
+                    <button class="btn btn-danger btn-sm" onclick="clearAllNotifications()">
+                        <i class="fas fa-trash"></i> সব মুছুন
+                    </button>
+                </div>
+            `;
+
+            const itemsHtml = currentNotifList.map((n, idx) => `
+                <div class="notif-item ${n.isRead ? '' : 'unread'}" style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                    <div style="flex:1; min-width:0;">
                         <div class="notif-title">${n.scope === 'global' ? '📢 ' : '📦 '}${escapeHtml(n.title)}</div>
                         <div class="notif-msg">${escapeHtml(n.message)}</div>
                         <div class="notif-time">${formatDate(n.timestamp)}</div>
                     </div>
-                `).join('');
+                    <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:#fecaca; padding:5px 8px; flex-shrink:0;" onclick="deleteSingleNotification(${idx})" title="মুছুন">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            container.innerHTML = topBar + itemsHtml;
+        }
+
+        async function deleteSingleNotification(idx) {
+            const n = currentNotifList[idx];
+            if (!n) return;
+            try {
+                if (n.scope === 'global') {
+                    if (!hiddenGlobalNotifIds.includes(n.id)) hiddenGlobalNotifIds.push(n.id);
+                    localStorage.setItem(CACHE_KEYS.HIDDEN_NOTIFS, JSON.stringify(hiddenGlobalNotifIds));
+                } else if (currentUserMobile) {
+                    await restDelete(`notifications/users/${currentUserMobile}/${n.id}`);
+                    delete userNotifs[n.id];
+                }
+                renderNotificationsList();
+                updateNotificationBadge();
+                showToast("নোটিফিকেশন মুছে ফেলা হয়েছে", "success");
+            } catch (e) {
+                showToast("নোটিফিকেশন মুছতে সমস্যা হয়েছে!", "error");
             }
+        }
+
+        function clearAllNotifications() {
+            if (currentNotifList.length === 0) return;
+            showConfirm("সব নোটিফিকেশন মুছুন", "আপনি কি সব নোটিফিকেশন মুছে ফেলতে চান?", async () => {
+                try {
+                    const globalIds = Object.keys(globalNotifs || {});
+                    hiddenGlobalNotifIds = Array.from(new Set([...hiddenGlobalNotifIds, ...globalIds]));
+                    localStorage.setItem(CACHE_KEYS.HIDDEN_NOTIFS, JSON.stringify(hiddenGlobalNotifIds));
+
+                    if (currentUserMobile) {
+                        await restDelete(`notifications/users/${currentUserMobile}`);
+                        userNotifs = {};
+                    }
+                    renderNotificationsList();
+                    updateNotificationBadge();
+                    showToast("সব নোটিফিকেশন মুছে ফেলা হয়েছে!", "success");
+                } catch (e) {
+                    showToast("নোটিফিকেশন মুছতে সমস্যা হয়েছে!", "error");
+                }
+            });
+        }
+
+        async function openNotificationsModal() {
+            if (currentUserMobile) await syncUserData();
+            renderNotificationsList();
             openModal('notifModal');
 
-            for (const n of list) {
+            for (const n of currentNotifList) {
                 if (!n.isRead) {
-                    if (n.scope === 'global') seenGlobalNotifIds.push(n.id);
-                    else if (currentUserMobile) {
+                    if (n.scope === 'global') {
+                        if (!seenGlobalNotifIds.includes(n.id)) seenGlobalNotifIds.push(n.id);
+                    } else if (currentUserMobile && userNotifs[n.id]) {
                         userNotifs[n.id].read = true;
                         restPatch(`notifications/users/${currentUserMobile}/${n.id}`, { read: true });
                     }
