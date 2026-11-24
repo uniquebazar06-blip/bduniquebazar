@@ -651,7 +651,7 @@
         </div>
     </div>
 
-    <!-- 2. Auth Modal (11-Digit Mobile + Password + Full Address) -->
+    <!-- 2. Auth Modal (Auto Password Save + Address Reset Link) -->
     <div class="modal-overlay" id="authModal">
         <div class="modal-sheet" style="max-width:440px;">
             <div class="modal-header">
@@ -659,39 +659,91 @@
                 <button class="close-btn" onclick="closeModal('authModal')">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label>১১ ডিজিটের মোবাইল নম্বর *</label>
-                    <input type="tel" id="authMobile" class="form-control" maxlength="11" placeholder="017XXXXXXXX">
-                </div>
-                <div class="form-group">
-                    <label>পাসওয়ার্ড (Password) *</label>
-                    <input type="password" id="authPassword" class="form-control" placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড">
-                </div>
-
-                <div id="registerFields" style="display:none;">
+                <form id="authForm" autocomplete="on" onsubmit="event.preventDefault(); handleAuth();">
                     <div class="form-group">
-                        <label>আপনার পূর্ণ নাম *</label>
-                        <input type="text" id="regName" class="form-control" placeholder="যেমন: মোঃ আরিফুল ইসলাম">
+                        <label>১১ ডিজিটের মোবাইল নম্বর *</label>
+                        <input type="tel" id="authMobile" name="username" autocomplete="username" class="form-control" maxlength="11" placeholder="017XXXXXXXX">
                     </div>
                     <div class="form-group">
-                        <label>গ্রাম / বাড়ি / রোড *</label>
-                        <input type="text" id="regVillage" class="form-control" placeholder="গ্রাম বা এলাকার নাম লিখুন">
+                        <label>পাসওয়ার্ড (Password) *</label>
+                        <input type="password" id="authPassword" name="password" autocomplete="current-password" class="form-control" placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড">
+                        <div id="forgotPassWrap" style="text-align:right; margin-top:6px;">
+                            <a href="javascript:void(0)" onclick="openResetPassModal()" style="font-size:13px; color:var(--primary); font-weight:600; text-decoration:none;">
+                                পাসওয়ার্ড ভুলে গেছেন?
+                            </a>
+                        </div>
+                    </div>
+
+                    <div id="registerFields" style="display:none;">
+                        <div class="form-group">
+                            <label>আপনার পূর্ণ নাম *</label>
+                            <input type="text" id="regName" autocomplete="name" class="form-control" placeholder="যেমন: মোঃ আরিফুল ইসলাম">
+                        </div>
+                        <div class="form-group">
+                            <label>গ্রাম / বাড়ি / রোড *</label>
+                            <input type="text" id="regVillage" class="form-control" placeholder="গ্রাম বা এলাকার নাম লিখুন">
+                        </div>
+                        <div class="form-row-2">
+                            <div class="form-group">
+                                <label>থানা / উপজেলা *</label>
+                                <input type="text" id="regThana" class="form-control" placeholder="থানা/উপজেলা">
+                            </div>
+                            <div class="form-group">
+                                <label>জেলা *</label>
+                                <input type="text" id="regDistrict" class="form-control" placeholder="জেলার নাম">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width:100%; margin-top:6px;" id="authSubmitBtn">লগইন করুন</button>
+                </form>
+                <div class="toggle-auth" onclick="toggleAuthMode()">
+                    <span id="authPromptText">অ্যাকাউন্ট নেই?</span> <span id="authToggleText">নতুন নিবন্ধন করুন</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2B. Address-Verified Instant Password Reset Modal -->
+    <div class="modal-overlay" id="resetPassModal">
+        <div class="modal-sheet" style="max-width:440px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-key" style="color:var(--primary);"></i> পাসওয়ার্ড পরিবর্তন করুন</h3>
+                <button class="close-btn" onclick="closeModal('resetPassModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.5;">
+                    আপনার নিবন্ধিত মোবাইল নম্বর এবং অ্যাকাউন্টে সেভ করা <strong>গ্রাম, থানা ও জেলা</strong> সঠিকভাবে লিখলে সাথে সাথে নতুন পাসওয়ার্ড সেট করতে পারবেন।
+                </p>
+                <form id="resetPassForm" autocomplete="on" onsubmit="event.preventDefault(); handleAddressPasswordReset();">
+                    <div class="form-group">
+                        <label>নিবন্ধিত ১১ ডিজিটের মোবাইল নম্বর *</label>
+                        <input type="tel" id="resetMobile" name="username" autocomplete="username" class="form-control" maxlength="11" placeholder="017XXXXXXXX">
+                    </div>
+                    <div class="form-group">
+                        <label>নিবন্ধিত গ্রাম / বাড়ি / রোড *</label>
+                        <input type="text" id="resetVillage" class="form-control" placeholder="আগে যে গ্রাম লিখেছিলেন">
                     </div>
                     <div class="form-row-2">
                         <div class="form-group">
-                            <label>থানা / উপজেলা *</label>
-                            <input type="text" id="regThana" class="form-control" placeholder="থানা/উপজেলা">
+                            <label>নিবন্ধিত থানা / উপজেলা *</label>
+                            <input type="text" id="resetThana" class="form-control" placeholder="থানা/উপজেলা">
                         </div>
                         <div class="form-group">
-                            <label>জেলা *</label>
-                            <input type="text" id="regDistrict" class="form-control" placeholder="জেলার নাম">
+                            <label>নিবন্ধিত জেলা *</label>
+                            <input type="text" id="resetDistrict" class="form-control" placeholder="জেলার নাম">
                         </div>
                     </div>
-                </div>
-
-                <button class="btn btn-primary" style="width:100%; margin-top:6px;" id="authSubmitBtn" onclick="handleAuth()">লগইন করুন</button>
-                <div class="toggle-auth" onclick="toggleAuthMode()">
-                    <span id="authPromptText">অ্যাকাউন্ট নেই?</span> <span id="authToggleText">নতুন নিবন্ধন করুন</span>
+                    <div class="form-group">
+                        <label>নতুন পাসওয়ার্ড (New Password) *</label>
+                        <input type="password" id="resetNewPass" name="password" autocomplete="new-password" class="form-control" placeholder="কমপক্ষে ৪ অক্ষরের নতুন পাসওয়ার্ড">
+                    </div>
+                    <button type="submit" class="btn btn-success" style="width:100%; margin-top:6px;" id="resetSubmitBtn">
+                        <i class="fas fa-check-circle"></i> পাসওয়ার্ড পরিবর্তন ও লগইন করুন
+                    </button>
+                </form>
+                <div class="toggle-auth" onclick="closeModal('resetPassModal'); openAuthModal();">
+                    <span>পাসওয়ার্ড মনে আছে?</span> <span>লগইন পেজে ফিরে যান</span>
                 </div>
             </div>
         </div>
@@ -1859,9 +1911,70 @@ if (url.searchParams.has('product')) {
         function updateAuthModalView() {
             document.getElementById('authTitle').innerHTML = isLoginMode ? '<i class="fas fa-user-lock"></i> লগইন করুন' : '<i class="fas fa-user-plus"></i> নতুন নিবন্ধন করুন';
             document.getElementById('registerFields').style.display = isLoginMode ? 'none' : 'block';
+            document.getElementById('forgotPassWrap').style.display = isLoginMode ? 'block' : 'none';
+            document.getElementById('authPassword').setAttribute('autocomplete', isLoginMode ? 'current-password' : 'new-password');
             document.getElementById('authSubmitBtn').innerText = isLoginMode ? 'লগইন করুন' : 'নিবন্ধন সম্পন্ন করুন';
             document.getElementById('authPromptText').innerText = isLoginMode ? 'অ্যাকাউন্ট নেই?' : 'ইতিমধ্যে অ্যাকাউন্ট আছে?';
             document.getElementById('authToggleText').innerText = isLoginMode ? 'নতুন নিবন্ধন করুন' : 'লগইন করুন';
+        }
+
+        function openResetPassModal() {
+            const typedMobile = document.getElementById('authMobile').value.trim();
+            document.getElementById('resetMobile').value = typedMobile;
+            document.getElementById('resetVillage').value = '';
+            document.getElementById('resetThana').value = '';
+            document.getElementById('resetDistrict').value = '';
+            document.getElementById('resetNewPass').value = '';
+            closeModal('authModal');
+            openModal('resetPassModal');
+        }
+
+        async function handleAddressPasswordReset() {
+            const mobile = document.getElementById('resetMobile').value.trim();
+            const village = document.getElementById('resetVillage').value.trim();
+            const thana = document.getElementById('resetThana').value.trim();
+            const district = document.getElementById('resetDistrict').value.trim();
+            const newPass = document.getElementById('resetNewPass').value.trim();
+
+            if (!/^01[3-9]\d{8}$/.test(mobile)) return showToast("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন", "error");
+            if (!village || !thana || !district) return showToast("আপনার নিবন্ধিত গ্রাম, থানা ও জেলা লিখুন", "error");
+            if (newPass.length < 4) return showToast("কমপক্ষে ৪ অক্ষরের নতুন পাসওয়ার্ড দিন", "error");
+
+            const btn = document.getElementById('resetSubmitBtn');
+            if (btn.disabled) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> যাচাই করা হচ্ছে...';
+
+            const normalize = (str) => String(str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+            try {
+                const user = await restGet(`users/${mobile}`);
+                if (!user) {
+                    return showToast("এই নম্বরে কোনো অ্যাকাউন্ট পাওয়া যায়নি!", "error");
+                }
+                if (!user.village || !user.thana || !user.district) {
+                    return showToast("এই অ্যাকাউন্টে ঠিকানা সংরক্ষিত নেই। অ্যাডমিনের সাথে যোগাযোগ করুন।", "error");
+                }
+
+                const isMatch =
+                    normalize(user.village) === normalize(village) &&
+                    normalize(user.thana) === normalize(thana) &&
+                    normalize(user.district) === normalize(district);
+
+                if (!isMatch) {
+                    return showToast("গ্রাম, থানা বা জেলা নিবন্ধিত ঠিকানার সাথে মেলেনি!", "error");
+                }
+
+                await restPatch(`users/${mobile}`, { password: newPass });
+                closeModal('resetPassModal');
+                completeLogin(mobile, { ...user, password: newPass });
+                showToast("পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে!", "success");
+            } catch (e) {
+                showToast("ডাটাবেইজ কানেকশন এরর! আবার চেষ্টা করুন।", "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check-circle"></i> পাসওয়ার্ড পরিবর্তন ও লগইন করুন';
+            }
         }
 
         async function handleAuth() {
@@ -1903,19 +2016,29 @@ if (url.searchParams.has('product')) {
     }
 }
 
+        function savePasswordToBrowser(mobile, password, name) {
+            try {
+                if (window.PasswordCredential && navigator.credentials && password) {
+                    const cred = new PasswordCredential({
+                        id: mobile,
+                        password: password,
+                        name: name || mobile
+                    });
+                    navigator.credentials.store(cred).catch(() => {});
+                }
+            } catch (e) {}
+        }
+
         function completeLogin(mobile, profile) {
             currentUserMobile = mobile;
             currentUserProfile = profile;
             userFavorites = profile.favorites || {};
             localStorage.setItem(CACHE_KEYS.USER, mobile);
+            savePasswordToBrowser(mobile, profile.password, profile.name);
             updateAuthNavUI();
             closeModal('authModal');
             syncUserData();
             showToast(`স্বাগতম, ${profile.name || mobile}!`, "success");
-        }
-
-        function updateAuthNavUI() {
-            document.getElementById('navProfileText').innerText = currentUserMobile ? 'প্রোফাইল' : 'লগইন';
         }
 
         async function uploadProfileAvatar(input) {
