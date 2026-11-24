@@ -655,7 +655,7 @@
                 <form id="authForm" autocomplete="on" onsubmit="event.preventDefault(); handleAuth();">
                     <div class="form-group">
                         <label>১১ ডিজিটের মোবাইল নম্বর *</label>
-                        <input type="tel" id="authMobile" name="username" autocomplete="username" class="form-control" maxlength="11" placeholder="017XXXXXXXX">
+                        <input type="tel" id="authMobile" name="username" autocomplete="username" class="form-control" maxlength="15" placeholder="017XXXXXXXX">
                     </div>
                     <div class="form-group">
                         <label>পাসওয়ার্ড (Password) *</label>
@@ -711,7 +711,7 @@
                 <form id="resetPassForm" autocomplete="on" onsubmit="event.preventDefault(); handleAddressPasswordReset();">
                     <div class="form-group">
                         <label>নিবন্ধিত ১১ ডিজিটের মোবাইল নম্বর *</label>
-                        <input type="tel" id="resetMobile" name="username" autocomplete="username" class="form-control" maxlength="11" placeholder="017XXXXXXXX">
+                        <input type="tel" id="resetMobile" name="username" autocomplete="username" class="form-control" maxlength="15" placeholder="017XXXXXXXX">
                     </div>
                     <div class="form-group">
                         <label>নিবন্ধিত গ্রাম / বাড়ি / রোড *</label>
@@ -787,7 +787,7 @@
                 <button class="btn btn-danger" style="width:100%;" onclick="confirmLogout()">
                     <i class="fas fa-sign-out-alt"></i> লগআউট করুন
                 </button>
-                <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:10px;" id="appVersionFooter">Version 2.0.2</div>
+                <div style="text-align:center; font-size:11px; color:var(--muted); margin-top:10px;" id="appVersionFooter">Version 2.0.4</div>
             </div>
         </div>
     </div>
@@ -817,7 +817,7 @@
                         </div>
                         <div class="form-group">
                             <label>মোবাইল নম্বর *</label>
-                            <input type="tel" id="chkMobile" class="form-control" maxlength="11">
+                            <input type="tel" id="chkMobile" class="form-control" maxlength="15">
                         </div>
                     </div>
                     <div class="form-group">
@@ -935,9 +935,32 @@
         // নোট: Singapore সার্ভার হলে DB_URL বদলে দিন:
         // "https://bd-unique-bazar-default-rtdb.asia-southeast1.firebasedatabase.app"
         // ============================================================
-        const APP_CODE_VERSION = "2.0.2";
+        const APP_CODE_VERSION = "2.0.4";
         const DB_URL = "https://bd-unique-bazar-default-rtdb.firebaseio.com";
         const IMGBB_API_KEY = "eddb89bbce58d882cf0a41da7af0d62d";
+
+        // ============================================================
+        // ntfy Instant Push Alert Config (Free, Bangla-Safe & Reliable)
+        // ============================================================
+        const NTFY_TOPIC = "bduniquebazar_94827";
+
+        function sendNtfyAlert(title, message, tags = ['bell'], attachUrl = '') {
+            if (!NTFY_TOPIC) return;
+            const payload = {
+                topic: NTFY_TOPIC,
+                title: String(title || 'BD UNIQUE BAZAR'),
+                message: String(message || ''),
+                priority: 4,
+                tags: Array.isArray(tags) ? tags : ['bell']
+            };
+            if (attachUrl) payload.attach = attachUrl;
+
+            fetch('https://ntfy.sh', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                keepalive: true
+            }).catch(() => {});
+        }
 
         const CACHE_KEYS = {
             CODE_VER: 'bub_app_code_version',
@@ -1086,6 +1109,16 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
+        function normalizeBdMobile(raw) {
+            let digits = String(raw || '').replace(/\D/g, '');
+            if (digits.length === 13 && digits.startsWith('8801')) {
+                digits = digits.slice(2);
+            } else if (digits.length === 10 && digits.startsWith('1')) {
+                digits = '0' + digits;
+            }
+            return digits;
+        }
+
         function formatDate(ts) {
             if (!ts) return '';
             return new Date(ts).toLocaleString('bn-BD', {
@@ -1167,8 +1200,19 @@
         }
 
         // ============================================================
-        // Auto Version System
+        // Auto Version System (Fixed: Only shows banner when remote > local)
         // ============================================================
+        function isNewerVersion(remoteVer, localVer) {
+            const r = String(remoteVer || '').trim().split('.').map(n => parseInt(n, 10) || 0);
+            const l = String(localVer || '').trim().split('.').map(n => parseInt(n, 10) || 0);
+            const len = Math.max(r.length, l.length);
+            for (let i = 0; i < len; i++) {
+                if ((r[i] || 0) > (l[i] || 0)) return true;
+                if ((r[i] || 0) < (l[i] || 0)) return false;
+            }
+            return false;
+        }
+
         function checkLocalCodeVersion() {
             const savedCodeVer = localStorage.getItem(CACHE_KEYS.CODE_VER);
             if (savedCodeVer !== APP_CODE_VERSION) {
@@ -1180,7 +1224,10 @@
         }
 
         function checkRemoteAppVersion(remoteVer) {
-            if (!remoteVer || remoteVer === APP_CODE_VERSION) return;
+            if (!remoteVer || !isNewerVersion(remoteVer, APP_CODE_VERSION)) {
+                document.getElementById('updateBanner').style.display = 'none';
+                return;
+            }
             pendingRemoteAppVersion = remoteVer;
             const alreadyReloaded = sessionStorage.getItem('bub_reloaded_for');
             if (alreadyReloaded !== remoteVer) {
@@ -1377,7 +1424,7 @@
 
                 const rawOrders = Object.entries(uOrders || {}).map(([key, o]) => ({ key, ...o }));
 
-                // মূল orders নোড থেকে প্রতিটি অর্ডারের সর্বশেষ স্ট্যাটাস (Confirmed/Shipped/Delivered/Cancelled) সিঙ্ক
+                // মূল orders নোড থেকে প্রতিটি অর্ডারের সর্বশেষ স্ট্যাটাস সিঙ্ক
                 userOrders = await Promise.all(rawOrders.map(async (o) => {
                     try {
                         let liveStatus = await restGet(`orders/${o.key}/status`);
@@ -1453,7 +1500,7 @@
                 const hasDiscount = p.oldPrice && Number(p.oldPrice) > Number(p.price);
                 const discPct = hasDiscount ? Math.round(((p.oldPrice - p.price) / p.oldPrice) * 100) : 0;
                 return `
-                    <div class="slide-item" onclick="openProductDetails('${id}')">
+                    <div class="slide-item" onclick="openProductDetails('${escapeHtml(id)}')">
                         <img src="${escapeHtml(imgs[0])}" alt="${escapeHtml(p.name)}" onerror="this.onerror=null;this.src='https://placehold.co/600x340/0f172a/94a3b8?text=No+Image'">
                         <div class="slide-overlay">
                             <div class="slide-top-badges">
@@ -1713,7 +1760,7 @@
             if (imgs.length > 1) {
                 thumbsBox.style.display = 'flex';
                 thumbsBox.innerHTML = imgs.map((src, idx) => `
-                    <img src="${escapeHtml(src)}" class="g-thumb ${idx === 0 ? 'active' : ''}" onclick="switchDetailImage(this, '${escapeHtml(src)}')">
+                    <img src="${escapeHtml(src)}" class="g-thumb ${idx === 0 ? 'active' : ''}" onclick="switchDetailImage(this)">
                 `).join('');
             } else {
                 thumbsBox.style.display = 'none';
@@ -1761,8 +1808,8 @@
             document.querySelector('#detailsModal .modal-sheet').scrollTop = 0;
         }
 
-        function switchDetailImage(thumbEl, src) {
-            document.getElementById('dMainImg').src = src;
+        function switchDetailImage(thumbEl) {
+            document.getElementById('dMainImg').src = thumbEl.src;
             document.querySelectorAll('#dGalleryThumbs .g-thumb').forEach(t => t.classList.remove('active'));
             thumbEl.classList.add('active');
         }
@@ -1871,7 +1918,7 @@
             if (related.length === 0) { section.style.display = 'none'; return; }
             section.style.display = 'block';
             container.innerHTML = related.map(([id, p]) => `
-                <div class="related-card" onclick="openProductDetails('${id}')">
+                <div class="related-card" onclick="openProductDetails('${escapeHtml(id)}')">
                     <img src="${escapeHtml(getProductImages(p)[0])}" alt="" onerror="this.onerror=null;this.src='https://placehold.co/200x150/e2e8f0/64748b?text=No+Image'">
                     <div class="related-card-info">
                         <div class="related-card-title">${escapeHtml(p.name)}</div>
@@ -1931,7 +1978,7 @@
         }
 
         function openResetPassModal() {
-            const typedMobile = document.getElementById('authMobile').value.trim();
+            const typedMobile = normalizeBdMobile(document.getElementById('authMobile').value);
             document.getElementById('resetMobile').value = typedMobile;
             document.getElementById('resetVillage').value = '';
             document.getElementById('resetThana').value = '';
@@ -1942,7 +1989,7 @@
         }
 
         async function handleAddressPasswordReset() {
-            const mobile = document.getElementById('resetMobile').value.trim();
+            const mobile = normalizeBdMobile(document.getElementById('resetMobile').value);
             const village = document.getElementById('resetVillage').value.trim();
             const thana = document.getElementById('resetThana').value.trim();
             const district = document.getElementById('resetDistrict').value.trim();
@@ -1990,7 +2037,7 @@
         }
 
         async function handleAuth() {
-            const mobile = document.getElementById('authMobile').value.trim();
+            const mobile = normalizeBdMobile(document.getElementById('authMobile').value);
             const password = document.getElementById('authPassword').value.trim();
             if (!/^01[3-9]\d{8}$/.test(mobile)) return showToast("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন", "error");
             if (password.length < 4) return showToast("কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন", "error");
@@ -2090,6 +2137,7 @@
                 localStorage.removeItem(CACHE_KEYS.USER);
                 currentUserMobile = null; currentUserProfile = null;
                 userFavorites = {}; userNotifs = {}; userOrders = [];
+                document.getElementById('authPassword').value = '';
                 updateAuthNavUI(); updateFavBadge(); updateNotificationBadge();
                 closeModal('profileModal'); renderProducts();
                 showToast("সফলভাবে লগআউট হয়েছে", "info");
@@ -2104,6 +2152,21 @@
             const qty = cart.reduce((s, i) => s + i.qty, 0);
             const b = document.getElementById('cartBadge');
             b.innerText = qty; b.style.display = qty > 0 ? 'flex' : 'none';
+        }
+        function syncCartWithCatalog() {
+            if (Object.keys(productsData).length === 0) return;
+            let changed = false;
+            cart = cart.filter(item => {
+                const p = productsData[item.id];
+                if (!p) return true;
+                const latestPrice = Number(p.price);
+                if (item.price !== latestPrice) { item.price = latestPrice; changed = true; }
+                if (p.stock !== undefined && Number(p.stock) > 0 && item.qty > Number(p.stock)) {
+                    item.qty = Number(p.stock); changed = true;
+                }
+                return true;
+            });
+            if (changed) saveCartLocal();
         }
         function addItemToCart(prodId) {
             const p = productsData[prodId];
@@ -2134,6 +2197,7 @@
 
         function openCartModal() {
             setActiveBottomNav('navCart');
+            syncCartWithCatalog();
             renderCartUI();
             if (currentUserProfile) {
                 document.getElementById('chkName').value = currentUserProfile.name || '';
@@ -2156,7 +2220,7 @@
             chk.style.display = 'block';
             list.innerHTML = cart.map((item, idx) => `
                 <div class="cart-item">
-                    <img src="${escapeHtml(item.image)}" alt="">
+                    <img src="${escapeHtml(item.image)}" alt="" onerror="this.onerror=null;this.src='https://placehold.co/100x100/e2e8f0/64748b?text=Img'">
                     <div class="cart-item-info">
                         <div class="cart-item-title">${escapeHtml(item.name)}</div>
                         <div class="cart-item-price">${item.code ? `[${escapeHtml(item.code)}] ` : ''}৳ ${item.price} × ${item.qty} = ৳ ${item.price * item.qty}</div>
@@ -2210,8 +2274,16 @@
             if (!currentUserMobile) { showToast("অর্ডার করতে লগইন বা নিবন্ধন করুন", "info"); openAuthModal(); return; }
             if (cart.length === 0) return;
 
+            syncCartWithCatalog();
+            for (const item of cart) {
+                const p = productsData[item.id];
+                if (p && p.stock !== undefined && Number(p.stock) <= 0) {
+                    return showToast(`"${item.name}" বর্তমানে স্টক আউট! কার্ট থেকে সরিয়ে নিন।`, "error");
+                }
+            }
+
             const customerName = document.getElementById('chkName').value.trim();
-            const phone = document.getElementById('chkMobile').value.trim();
+            const phone = normalizeBdMobile(document.getElementById('chkMobile').value);
             const village = document.getElementById('chkVillage').value.trim();
             const thana = document.getElementById('chkThana').value.trim();
             const district = document.getElementById('chkDistrict').value.trim();
@@ -2251,6 +2323,24 @@
                         timestamp: Date.now(), read: false
                     })
                 ]);
+
+                // ntfy Instant Order Push Alert
+                const itemsText = orderObj.items
+                    .map((i, n) => `${n + 1}. ${i.name}${i.code ? ` (${i.code})` : ''} × ${i.qty} = ৳${i.price * i.qty}`)
+                    .join('\n');
+
+                const ntfyOrderMsg =
+                    `অর্ডার আইডি: #${orderId}\n` +
+                    `নাম: ${customerName}\n` +
+                    `মোবাইল: ${phone}\n` +
+                    `ঠিকানা: ${fullAddress}\n` +
+                    `----------------\n` +
+                    `${itemsText}\n` +
+                    `----------------\n` +
+                    `পেমেন্ট: ${selectedPaymentMethod}${orderObj.trxId ? ` (TrxID: ${orderObj.trxId})` : ''}\n` +
+                    `ডেলিভারি চার্জ: ৳${delivery} | মোট বিল: ৳${total}`;
+
+                sendNtfyAlert(`নতুন অর্ডার! ৳${total} (#${orderId})`, ntfyOrderMsg, ['shopping_cart']);
 
                 cart = [];
                 document.getElementById('chkTrxId').value = '';
@@ -2413,7 +2503,7 @@
         }
 
         // ============================================================
-        // Direct Live Chat
+        // Direct Live Chat (With ntfy Instant Push Alert)
         // ============================================================
         function openChatModal(prefillText = '') {
             if (!currentUserMobile) { showToast("লাইভ চ্যাট করতে লগইন করুন", "info"); openAuthModal(); return; }
@@ -2444,7 +2534,7 @@
                 box.innerHTML = arr.map(m => `
                     <div class="msg-bubble ${m.sender === 'customer' ? 'msg-customer' : 'msg-admin'}">
                         ${m.text ? `<div>${escapeHtml(m.text)}</div>` : ''}
-                        ${m.imageUrl ? `<img src="${escapeHtml(m.imageUrl)}" class="msg-img" onclick="window.open('${escapeHtml(m.imageUrl)}','_blank')">` : ''}
+                        ${m.imageUrl ? `<img src="${escapeHtml(m.imageUrl)}" class="msg-img" onclick="window.open(this.src,'_blank')">` : ''}
                         <span class="msg-time">${formatDate(m.timestamp)}</span>
                     </div>
                 `).join('');
@@ -2467,6 +2557,11 @@
                         lastMessage: text, lastTime: now, unreadAdmin: true
                     })
                 ]);
+                sendNtfyAlert(
+                    `নতুন চ্যাট: ${currentUserProfile?.name || currentUserMobile}`,
+                    `মোবাইল: ${currentUserMobile}\nমেসেজ: ${text}`,
+                    ['speech_balloon']
+                );
                 fetchChatMessages(true);
             } catch (e) { showToast("মেসেজ পাঠানো যায়নি", "error"); }
         }
@@ -2486,6 +2581,12 @@
                         lastMessage: '📷 একটি ছবি পাঠিয়েছে', lastTime: now, unreadAdmin: true
                     })
                 ]);
+                sendNtfyAlert(
+                    `ছবি পাঠিয়েছে: ${currentUserProfile?.name || currentUserMobile}`,
+                    `মোবাইল: ${currentUserMobile}\nকাস্টমার লাইভ চ্যাটে একটি ছবি পাঠিয়েছে।`,
+                    ['camera'],
+                    imageUrl
+                );
                 fetchChatMessages(true);
                 showToast("ছবি পাঠানো হয়েছে!", "success");
             } catch (e) { showToast("ছবি পাঠানো যায়নি", "error"); }
