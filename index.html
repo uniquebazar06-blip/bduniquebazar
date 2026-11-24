@@ -944,7 +944,7 @@
         // ============================================================
         const NTFY_TOPIC = "bduniquebazar_94827";
 
-        async function sendNtfyAlert(title, message, tags = ['bell'], attachUrl = '') {
+        function sendNtfyAlert(title, message, tags = ['bell'], attachUrl = '') {
             if (!NTFY_TOPIC) return;
             const payload = {
                 topic: NTFY_TOPIC,
@@ -955,22 +955,23 @@
             };
             if (attachUrl) payload.attach = attachUrl;
 
-            try {
-                const res = await fetch('https://ntfy.sh/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-            } catch (err) {
-                fetch(`https://ntfy.sh/${encodeURIComponent(NTFY_TOPIC)}`, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                    body: `${title}\n${message}${attachUrl ? '\n' + attachUrl : ''}`
-                }).catch(() => {});
-            }
+            fetch('https://ntfy.sh', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                keepalive: true
+            }).catch(() => {});
         }
+
+        const CACHE_KEYS = {
+            CODE_VER: 'bub_app_code_version',
+            DATA_VER: 'bub_data_version',
+            CATALOG: 'bub_catalog_cache_v2',
+            USER: 'bdUniqueUserMobile',
+            CART: 'bdUniqueCart',
+            SEEN_NOTIFS: 'bdUniqueSeenNotifs',
+            HIDDEN_NOTIFS: 'bdUniqueHiddenNotifs'
+        };
+
         // ============================================================
         // High-Scale Firebase REST Helper
         // ============================================================
